@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['C:\\Users\\5A5851\\Desktop\\新建文件夹 (10)\\javbus_crawler.py'],
+    ['javbus_crawler.py'],
     pathex=[],
     binaries=[],
     datas=[],
