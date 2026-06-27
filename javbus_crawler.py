@@ -71,21 +71,29 @@ class JavbusCrawler:
     def _pass_age_verification(self):
         """Pass age verification using Selenium"""
         try:
-            # Wait for page to load
-            time.sleep(2)
-            
+            # Wait for form elements to appear
+            try:
+                WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located(
+                        (By.CSS_SELECTOR, "input[type='checkbox'], input[type='radio']")
+                    )
+                )
+            except TimeoutException:
+                return False
+
             # Try to find and click checkbox
             try:
                 checkbox = self.driver.find_element(By.CSS_SELECTOR, "#form1 input[type='checkbox']")
                 checkbox.click()
-                time.sleep(0.5)
                 submit = self.driver.find_element(By.ID, "submit")
                 submit.click()
-                time.sleep(2)
+                WebDriverWait(self.driver, 10).until(
+                    lambda d: d.title != "Age Verification"
+                )
                 return True
             except:
                 pass
-            
+
             # Try quiz
             try:
                 radios = self.driver.find_elements(By.CSS_SELECTOR, "input[type='radio']")
@@ -96,13 +104,14 @@ class JavbusCrawler:
                         except:
                             pass
                     submit = self.driver.find_element(By.ID, "submit")
-                    if submit:
-                        submit.click()
-                        time.sleep(2)
+                    submit.click()
+                    WebDriverWait(self.driver, 10).until(
+                        lambda d: d.title != "Age Verification"
+                    )
                     return True
             except:
                 pass
-            
+
             return False
         except Exception as e:
             print(f"Verification error: {e}")
@@ -118,10 +127,14 @@ class JavbusCrawler:
         try:
             # Navigate to star page
             driver.get(star_url)
-            time.sleep(3)
-            
-            # Pass age verification
+
+            # Pass age verification first
             self._pass_age_verification()
+
+            # Wait for page content to load
+            WebDriverWait(driver, 15).until(
+                lambda d: len(re.findall(r'[A-Z]{2,6}-\d{3,5}', d.page_source)) > 0
+            )
             
             # Extract star name from URL
             star_match = re.search(r'/star/([^/?#]+)', star_url)
@@ -177,9 +190,10 @@ class JavbusCrawler:
                 
                 # Navigate to next page
                 driver.get(next_url)
-                time.sleep(3)
+                WebDriverWait(driver, 15).until(
+                    lambda d: len(re.findall(r'[A-Z]{2,6}-\d{3,5}', d.page_source)) > 0
+                )
                 page_num += 1
-                time.sleep(1)
         
         except Exception as e:
             if callback:
@@ -213,8 +227,13 @@ class JavbusCrawler:
         try:
             # Navigate to video page
             self.driver.get(url)
-            time.sleep(3)
-            
+            # Wait for page content to load
+            WebDriverWait(self.driver, 15).until(
+                EC.presence_of_element_located(
+                    (By.CSS_SELECTOR, 'h2.entry-title, #magnet-table, .container')
+                )
+            )
+
             # Get page source
             content = self.driver.page_source
             
@@ -243,7 +262,8 @@ class JavbusCrawler:
                                 name_text = link.get_text(strip=True)
                                 size = tds[1].get_text(strip=True) if len(tds) > 1 else ''
                                 date = tds[2].get_text(strip=True) if len(tds) > 2 else ''
-                                has_sub = '字幕' in name_text or 'sub' in name_text.lower()
+                                # Check for subtitle button within the same <td>
+                                has_sub = any('字幕' in a.get_text() for a in tds[0].select('a'))
                                 magnets.append({
                                     'magnet': magnet_href,
                                     'name': name_text,
@@ -540,7 +560,7 @@ class CrawlerApp:
                 else:
                     self.log_msg(f"  No magnet found")
 
-                time.sleep(0.5)
+                time.sleep(0.2)
 
             self.log_msg(f"Done! {success}/{len(videos)} with magnet")
             self.status_var.set(f"Done: {success}/{len(videos)}")
