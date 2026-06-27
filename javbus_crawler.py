@@ -234,6 +234,8 @@ class JavbusCrawler:
                     (By.CSS_SELECTOR, 'h2.entry-title, #magnet-table, .container')
                 )
             )
+            # Wait for JS to load magnet links dynamically
+            time.sleep(3)
 
             # Get page source
             content = self.driver.page_source
