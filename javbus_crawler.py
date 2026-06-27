@@ -193,6 +193,7 @@ class JavbusCrawler:
                 WebDriverWait(driver, 15).until(
                     lambda d: len(re.findall(r'[A-Z]{2,6}-\d{3,5}', d.page_source)) > 0
                 )
+                time.sleep(2)
                 page_num += 1
         
         except Exception as e:
