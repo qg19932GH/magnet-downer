@@ -560,7 +560,7 @@ class CrawlerApp:
                 else:
                     self.log_msg(f"  No magnet found")
 
-                time.sleep(0.2)
+                time.sleep(2)
 
             self.log_msg(f"Done! {success}/{len(videos)} with magnet")
             self.status_var.set(f"Done: {success}/{len(videos)}")
