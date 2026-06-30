@@ -313,79 +313,146 @@ class JavbusCrawler:
 class CrawlerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("JavBus Magnet Crawler")
-        self.root.geometry("1200x650")
+        self.root.title("磁力链接爬虫")
+        self.root.geometry("1100x620")
         self.crawler = JavbusCrawler()
         self.crawling = False
+        self._apply_theme()
         self._create_widgets()
 
-    def _create_widgets(self):
-        # Settings
-        f = ttk.LabelFrame(self.root, text="Settings", padding=10)
-        f.pack(fill="x", padx=10, pady=5)
+    def _apply_theme(self):
+        style = ttk.Style()
+        theme = style.theme_names()
+        if 'vista' in theme:
+            style.theme_use('vista')
+        elif 'clam' in theme:
+            style.theme_use('clam')
 
-        ttk.Label(f, text="Actor URL:").grid(row=0, column=0, sticky="w", pady=2)
+        bg = '#f0f2f5'
+        card = '#ffffff'
+        primary = '#4a90d9'
+        hover = '#357abd'
+        danger = '#e74c3c'
+        danger_hover = '#c0392b'
+        success = '#27ae60'
+        text = '#2c3e50'
+        muted = '#7f8c8d'
+
+        self.root.configure(bg=bg)
+
+        style.configure('Title.TLabel', font=('Microsoft YaHei', 14, 'bold'), foreground=text, background=bg)
+        style.configure('Subtitle.TLabel', font=('Microsoft YaHei', 9), foreground=muted, background=bg)
+        style.configure('Card.TLabelframe', background=card, borderwidth=0)
+        style.configure('Card.TLabelframe.Label', font=('Microsoft YaHei', 10, 'bold'), foreground=text, background=card)
+        style.configure('Header.TFrame', background=bg)
+        style.configure('Input.TEntry', fieldbackground='#f8f9fa', borderwidth=1, relief='solid')
+        style.map('Input.TEntry', fieldbackground=[('focus', '#ffffff')])
+        style.configure('Primary.TButton', font=('Microsoft YaHei', 9, 'bold'), foreground='white', background=primary, padding=(18, 8))
+        style.map('Primary.TButton', background=[('active', hover)])
+        style.configure('Danger.TButton', font=('Microsoft YaHei', 9, 'bold'), foreground='white', background=danger, padding=(18, 8))
+        style.map('Danger.TButton', background=[('active', danger_hover)])
+        style.configure('Action.TButton', font=('Microsoft YaHei', 9), padding=(14, 8))
+        style.configure('Status.TLabel', font=('Microsoft YaHei', 9), foreground=text, background=card)
+        style.configure('Count.TLabel', font=('Microsoft YaHei', 11, 'bold'), foreground=primary, background=card)
+        style.configure('Card.Progressbar', background=primary, depth=6)
+        style.map('Card.Progressbar', background=[('active', hover)])
+        style.configure('Treeview', font=('Microsoft YaHei', 9), background=card, fieldbackground=card, borderwidth=0)
+        style.configure('Treeview.Header', font=('Microsoft YaHei', 9, 'bold'), background='#ecf0f1', foreground=text)
+
+        self.colors = {'bg': bg, 'card': card, 'primary': primary, 'danger': danger, 'success': success, 'text': text, 'muted': muted, 'hover': hover, 'danger_hover': danger_hover}
+
+    def _create_rounded_frame(self, parent, text="", padding=15):
+        f = ttk.LabelFrame(parent, text=text, style='Card.TLabelframe', padding=padding)
+        return f
+
+    def _create_widgets(self):
+        c = self.colors
+
+        # Header
+        header = ttk.Frame(self.root, style='Header.TFrame', padding=(20, 12))
+        header.pack(fill="x")
+        ttk.Label(header, text="🔍 JavBus 磁力链接爬虫", style='Title.TLabel').pack(side="left")
+        ttk.Label(header, text="基于 Selenium 的自动化爬虫工具", style='Subtitle.TLabel').pack(side="left", padx=(12, 0))
+
+        # Main content
+        main = ttk.Frame(self.root, style='Header.TFrame')
+        main.pack(fill="both", expand=True, padx=16, pady=8)
+
+        # Settings card
+        card = self._create_rounded_frame(main, text="⚙️  爬取设置")
+        card.pack(fill="x", pady=(0, 8))
+
+        row0 = ttk.Frame(card)
+        row0.pack(fill="x", pady=2)
+        ttk.Label(row0, text="演员主页地址", font=('Microsoft YaHei', 9, 'bold'), foreground=c['text'], background=c['card'], width=12).pack(side="left")
         self.url_var = tk.StringVar(value="https://www.javbus.com/star/zi1")
-        self.url_entry = ttk.Entry(f, textvariable=self.url_var, width=60)
-        self.url_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=2)
+        self.url_entry = ttk.Entry(row0, textvariable=self.url_var, style='Input.TEntry')
+        self.url_entry.pack(side="left", fill="x", expand=True, padx=8)
         self._add_entry_context_menu(self.url_entry)
 
-        ttk.Label(f, text="Max videos (0=all):").grid(row=1, column=0, sticky="w", pady=2)
+        row1 = ttk.Frame(card)
+        row1.pack(fill="x", pady=2)
+        ttk.Label(row1, text="最大爬取数量", font=('Microsoft YaHei', 9, 'bold'), foreground=c['text'], background=c['card'], width=12).pack(side="left")
         self.max_var = tk.StringVar(value="0")
-        self.max_entry = ttk.Entry(f, textvariable=self.max_var, width=8)
-        self.max_entry.grid(row=1, column=1, sticky="w", pady=2)
+        self.max_entry = ttk.Entry(row1, textvariable=self.max_var, style='Input.TEntry', width=8)
+        self.max_entry.pack(side="left", padx=8)
         self._add_entry_context_menu(self.max_entry)
+        ttk.Label(row1, text="(0 = 全部)", font=('Microsoft YaHei', 9), foreground=c['muted'], background=c['card']).pack(side="left")
 
+        row2 = ttk.Frame(card)
+        row2.pack(fill="x", pady=2)
         self.prefer_sub = tk.BooleanVar(value=True)
-        ttk.Checkbutton(f, text="Prefer subtitle (字幕)", variable=self.prefer_sub).grid(row=2, column=0, columnspan=2, sticky="w", pady=2)
+        ttk.Checkbutton(row2, text="优先选择带字幕资源", variable=self.prefer_sub, style='TCheckbutton').pack(side="left")
 
-        f.columnconfigure(1, weight=1)
+        # Buttons + Status card
+        mid = self._create_rounded_frame(main, text="📊  运行状态")
+        mid.pack(fill="x", pady=(8, 8))
 
-        # Progress
-        f = ttk.LabelFrame(self.root, text="Progress", padding=10)
-        f.pack(fill="x", padx=10, pady=5)
+        btn_row = ttk.Frame(mid)
+        btn_row.pack(fill="x", pady=(0, 8))
+        self.start_btn = ttk.Button(btn_row, text="▶  开始爬取", command=self.start, style='Primary.TButton')
+        self.start_btn.pack(side="left", padx=(0, 6))
+        self.stop_btn = ttk.Button(btn_row, text="⏹  停止", command=self.stop_crawl, state="disabled", style='Danger.TButton')
+        self.stop_btn.pack(side="left", padx=(0, 6))
+        ttk.Button(btn_row, text="📁  导出 CSV", command=self.export, style='Action.TButton').pack(side="left", padx=(0, 6))
+        ttk.Button(btn_row, text="📋  复制磁力链接", command=self.copy_magnets, style='Action.TButton').pack(side="left")
 
-        self.status_var = tk.StringVar(value="Ready")
-        ttk.Label(f, textvariable=self.status_var).pack(anchor="w")
-        self.progress = ttk.Progressbar(f, mode='determinate')
-        self.progress.pack(fill="x", pady=5)
+        stat_row = ttk.Frame(mid)
+        stat_row.pack(fill="x")
+        self.status_var = tk.StringVar(value="就绪")
+        ttk.Label(stat_row, textvariable=self.status_var, style='Status.TLabel').pack(side="left")
+        self.count_var = tk.StringVar(value="0 条结果")
+        ttk.Label(stat_row, textvariable=self.count_var, style='Count.TLabel').pack(side="right")
 
-        # Buttons
-        f = ttk.Frame(self.root)
-        f.pack(fill="x", padx=10, pady=5)
-        self.start_btn = ttk.Button(f, text="Start", command=self.start)
-        self.start_btn.pack(side="left", padx=5)
-        self.stop_btn = ttk.Button(f, text="Stop", command=self.stop_crawl, state="disabled")
-        self.stop_btn.pack(side="left", padx=5)
-        ttk.Button(f, text="Export CSV", command=self.export).pack(side="left", padx=5)
-        ttk.Button(f, text="Copy Magnets", command=self.copy_magnets).pack(side="left", padx=5)
+        self.progress = ttk.Progressbar(mid, mode='determinate', style='Card.Progressbar')
+        self.progress.pack(fill="x", pady=(8, 0))
 
-        # Log + Results side by side
-        paned = ttk.PanedWindow(self.root, orient="horizontal")
-        paned.pack(fill="both", expand=True, padx=10, pady=5)
+        # Results area
+        paned = ttk.PanedWindow(main, orient="horizontal")
+        paned.pack(fill="both", expand=True)
 
-        f = ttk.LabelFrame(paned, text="Log")
-        self.log = scrolledtext.ScrolledText(f, wrap="word")
-        self.log.pack(fill="both", expand=True, padx=5, pady=5)
+        log_card = self._create_rounded_frame(paned, text="📝  运行日志")
+        self.log = scrolledtext.ScrolledText(log_card, wrap="word", font=('Consolas', 9), bg=c['card'], fg=c['text'], insertbackground=c['primary'], relief='flat', borderwidth=0)
+        self.log.pack(fill="both", expand=True)
         self.log.bind('<Control-a>', self._select_all)
         self.log.bind('<Control-c>', self._copy_text)
         self._add_context_menu(self.log)
-        paned.add(f, weight=1)
+        paned.add(log_card, weight=1)
 
-        f = ttk.LabelFrame(paned, text="Results")
-        self.res = scrolledtext.ScrolledText(f, wrap="word")
-        self.res.pack(fill="both", expand=True, padx=5, pady=5)
+        res_card = self._create_rounded_frame(paned, text="🎬  爬取结果")
+        self.res = scrolledtext.ScrolledText(res_card, wrap="word", font=('Microsoft YaHei', 9), bg=c['card'], fg=c['text'], insertbackground=c['primary'], relief='flat', borderwidth=0)
+        self.res.pack(fill="both", expand=True)
         self.res.bind('<Control-a>', self._select_all)
         self.res.bind('<Control-c>', self._copy_text)
         self._add_context_menu(self.res)
-        paned.add(f, weight=2)
+        paned.add(res_card, weight=2)
 
     def _add_context_menu(self, widget):
         menu = tk.Menu(widget, tearoff=0)
-        menu.add_command(label="Copy", command=lambda w=widget: self._copy_widget_text(w))
-        menu.add_command(label="Select All", command=lambda w=widget: self._select_widget_all(w))
+        menu.add_command(label="复制", command=lambda w=widget: self._copy_widget_text(w))
+        menu.add_command(label="全选", command=lambda w=widget: self._select_widget_all(w))
         menu.add_separator()
-        menu.add_command(label="Clear", command=lambda w=widget: self._clear_widget(w))
+        menu.add_command(label="清空", command=lambda w=widget: self._clear_widget(w))
 
         def show_menu(event):
             try:
@@ -399,11 +466,11 @@ class CrawlerApp:
     def _add_entry_context_menu(self, entry):
         menu = tk.Menu(entry, tearoff=0)
         menu.add_separator()
-        menu.add_command(label="Cut", command=lambda: self._entry_cut(entry))
-        menu.add_command(label="Copy", command=lambda: self._entry_copy(entry))
-        menu.add_command(label="Paste", command=lambda: self._entry_paste(entry))
+        menu.add_command(label="剪切", command=lambda: self._entry_cut(entry))
+        menu.add_command(label="复制", command=lambda: self._entry_copy(entry))
+        menu.add_command(label="粘贴", command=lambda: self._entry_paste(entry))
         menu.add_separator()
-        menu.add_command(label="Select All", command=lambda: self._entry_select_all(entry))
+        menu.add_command(label="全选", command=lambda: self._entry_select_all(entry))
 
         def show_menu(event):
             entry.focus_set()
@@ -486,7 +553,7 @@ class CrawlerApp:
             return
         url = self.url_var.get().strip()
         if not url:
-            messagebox.showerror("Error", "Enter actor URL")
+            messagebox.showerror("错误", "请输入演员主页地址")
             return
 
         self.crawling = True
@@ -503,34 +570,32 @@ class CrawlerApp:
         self.crawler.stop()
         self.start_btn.config(state="normal")
         self.stop_btn.config(state="disabled")
-        self.log_msg("Stopped")
+        self.log_msg("已停止")
 
     def _run(self, url):
         try:
-            self.log_msg(f"Fetching: {url}")
-            self.status_var.set("Starting browser...")
+            self.log_msg(f"正在请求: {url}")
+            self.status_var.set("正在启动浏览器...")
 
             if not SELENIUM_AVAILABLE:
-                self.log_msg("Selenium not installed!")
+                self.log_msg("未安装 Selenium！")
                 return
 
-            # Start browser
             self.crawler._get_driver()
 
-            # Get video codes with pagination
-            self.status_var.set("Fetching video list...")
+            self.status_var.set("正在获取视频列表...")
             videos = self.crawler._get_star_page_videos(url,
                 callback=lambda msg, cur=0, tot=0: (self.log_msg(msg), self.status_var.set(msg)))
 
             if not videos:
-                self.log_msg("No videos found!")
+                self.log_msg("未找到任何视频！")
                 return
 
             mx = self.max_var.get()
             if mx.isdigit() and int(mx) > 0:
                 videos = videos[:int(mx)]
 
-            self.log_msg(f"Found {len(videos)} videos")
+            self.log_msg(f"共找到 {len(videos)} 个视频")
             self.progress['maximum'] = len(videos)
 
             success = 0
@@ -542,7 +607,8 @@ class CrawlerApp:
 
                 self.status_var.set(f"[{i+1}/{len(videos)}] {code}")
                 self.progress['value'] = i + 1
-                self.log_msg(f"Crawling: {code}")
+                self.count_var.set(f"{i} 条结果")
+                self.log_msg(f"正在爬取: {code}")
 
                 vcode, title, magnet, info = self.crawler.get_video_magnets(
                     code, prefer_sub=prefer_sub,
@@ -557,19 +623,20 @@ class CrawlerApp:
 
                 if magnet:
                     success += 1
-                    self.log_msg(f"  OK: {info}")
+                    self.log_msg(f"  ✓ 成功: {info}")
                     self.res.insert("end", f"{vcode} | {title} | {info}\n{magnet}\n\n")
                     self.res.see("end")
                 else:
-                    self.log_msg(f"  No magnet found")
+                    self.log_msg(f"  ✗ 未找到磁力链接")
 
                 time.sleep(2)
 
-            self.log_msg(f"Done! {success}/{len(videos)} with magnet")
-            self.status_var.set(f"Done: {success}/{len(videos)}")
+            self.log_msg(f"爬取完成！共 {success}/{len(videos)} 个视频含有磁力链接")
+            self.status_var.set(f"完成: {success}/{len(videos)}")
+            self.count_var.set(f"{len(self.crawler.results)} 条结果")
 
         except Exception as e:
-            self.log_msg(f"Error: {e}")
+            self.log_msg(f"发生错误: {e}")
             import traceback
             self.log_msg(traceback.format_exc())
         finally:
@@ -580,30 +647,30 @@ class CrawlerApp:
 
     def export(self):
         if not self.crawler.results:
-            messagebox.showinfo("Info", "No results")
+            messagebox.showinfo("提示", "暂无可导出的结果")
             return
         path = filedialog.asksaveasfilename(
             defaultextension=".csv",
-            filetypes=[("CSV", "*.csv"), ("All", "*.*")],
-            initialfile="results.csv")
+            filetypes=[("CSV 文件", "*.csv"), ("所有文件", "*.*")],
+            initialfile="爬取结果.csv")
         if not path:
             return
         with open(path, 'w', newline='', encoding='utf-8-sig') as f:
             w = csv.writer(f)
-            w.writerow(["Code", "Title", "Info", "Magnet"])
+            w.writerow(["编号", "标题", "信息", "磁力链接"])
             for r in self.crawler.results:
                 w.writerow([r['code'], r['title'], r['info'], r['magnet']])
-        messagebox.showinfo("Success", f"Exported to {path}")
+        messagebox.showinfo("成功", f"已导出至: {path}")
 
     def copy_magnets(self):
         magnets = [r['magnet'] for r in self.crawler.results if r['magnet']]
         if not magnets:
-            messagebox.showinfo("Info", "No magnets to copy")
+            messagebox.showinfo("提示", "暂无可复制的磁力链接")
             return
         self.root.clipboard_clear()
         self.root.clipboard_append('\n'.join(magnets))
         self.root.update()
-        messagebox.showinfo("Copied", f"Copied {len(magnets)} magnets")
+        messagebox.showinfo("已复制", f"已复制 {len(magnets)} 条磁力链接")
 
 
 if __name__ == "__main__":
