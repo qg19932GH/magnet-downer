@@ -138,7 +138,7 @@ class JavbusCrawler:
                 page_codes = []
 
                 for match in VIDEO_CODE_RE.finditer(content):
-                    code = match.group(1)
+                    code = match.group(0)
                     if code not in INVALID_CODES and len(code) > 4:
                         page_codes.append(code)
 
