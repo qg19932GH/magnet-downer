@@ -4,10 +4,7 @@ import threading
 import csv
 import re
 import time
-import urllib.parse
-import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin
 
 # Try to import selenium
 try:
@@ -19,6 +16,10 @@ try:
     SELENIUM_AVAILABLE = True
 except ImportError:
     SELENIUM_AVAILABLE = False
+
+VIDEO_CODE_RE = re.compile(r'[A-Z]{2,6}-\d{3,5}')
+STAR_URL_RE = re.compile(r'/star/([^/?#]+)')
+INVALID_CODES = {'HTTP', 'HTML', 'HTTPS'}
 
 
 class JavbusCrawler:
@@ -34,20 +35,19 @@ class JavbusCrawler:
             raise RuntimeError("Selenium not installed. Run: pip install selenium")
         if self.driver:
             return self.driver
-        
+
         try:
             from selenium.webdriver.edge.options import Options as EdgeOptions
             EDGE_AVAILABLE = True
         except ImportError:
             EDGE_AVAILABLE = False
         from selenium.webdriver.chrome.options import Options as ChromeOptions
-        
+
         browsers = []
         if EDGE_AVAILABLE:
             browsers.append((webdriver.Edge, EdgeOptions))
         browsers.append((webdriver.Chrome, ChromeOptions))
-        
-        # Try browsers
+
         for BrowserClass, OptionsClass in browsers:
             try:
                 opts = OptionsClass()
@@ -62,16 +62,14 @@ class JavbusCrawler:
                 self.driver = BrowserClass(options=opts)
                 self.driver.set_page_load_timeout(30)
                 return self.driver
-            except Exception as e:
+            except Exception:
                 self.driver = None
                 continue
-        
+
         raise RuntimeError("Cannot start browser. Install Chrome or Edge.")
 
     def _pass_age_verification(self):
-        """Pass age verification using Selenium"""
         try:
-            # Wait for form elements to appear
             try:
                 WebDriverWait(self.driver, 10).until(
                     EC.presence_of_element_located(
@@ -81,7 +79,6 @@ class JavbusCrawler:
             except TimeoutException:
                 return False
 
-            # Try to find and click checkbox
             try:
                 checkbox = self.driver.find_element(By.CSS_SELECTOR, "#form1 input[type='checkbox']")
                 checkbox.click()
@@ -91,17 +88,16 @@ class JavbusCrawler:
                     lambda d: d.title != "Age Verification"
                 )
                 return True
-            except:
+            except Exception:
                 pass
 
-            # Try quiz
             try:
                 radios = self.driver.find_elements(By.CSS_SELECTOR, "input[type='radio']")
                 if radios:
                     for radio in radios[:5]:
                         try:
                             radio.click()
-                        except:
+                        except Exception:
                             pass
                     submit = self.driver.find_element(By.ID, "submit")
                     submit.click()
@@ -109,7 +105,7 @@ class JavbusCrawler:
                         lambda d: d.title != "Age Verification"
                     )
                     return True
-            except:
+            except Exception:
                 pass
 
             return False
@@ -118,89 +114,79 @@ class JavbusCrawler:
             return False
 
     def _get_star_page_videos(self, star_url, callback=None):
-        """Get all video codes from star page using Selenium (keeps driver open)"""
         driver = self.driver
         if not driver:
             return []
         video_codes = []
 
         try:
-            # Navigate to star page
             driver.get(star_url)
-
-            # Pass age verification first
             self._pass_age_verification()
 
-            # Wait for page content to load
             WebDriverWait(driver, 15).until(
-                lambda d: len(re.findall(r'[A-Z]{2,6}-\d{3,5}', d.page_source)) > 0
+                lambda d: len(VIDEO_CODE_RE.findall(d.page_source)) > 0
             )
-            
-            # Extract star name from URL
-            star_match = re.search(r'/star/([^/?#]+)', star_url)
-            star_name = star_match.group(1) if star_match else ''
-            
+
+            star_name = ''
+            m = STAR_URL_RE.search(star_url)
+            if m:
+                star_name = m.group(1)
+
             page_num = 1
             while not self._stop:
                 content = driver.page_source
                 page_codes = []
-                
-                for match in re.finditer(r'([A-Z]{2,6}-\d{3,5})', content):
+
+                for match in VIDEO_CODE_RE.finditer(content):
                     code = match.group(1)
-                    if code not in ('HTTP', 'HTML', 'HTTPS') and len(code) > 4:
+                    if code not in INVALID_CODES and len(code) > 4:
                         page_codes.append(code)
-                
+
                 page_codes = list(dict.fromkeys(page_codes))
                 video_codes.extend(page_codes)
-                
+
                 if callback:
-                    callback(f"Page {page_num}: +{len(page_codes)} (total: {len(video_codes)})",
+                    callback(f"第 {page_num} 页: +{len(page_codes)} (累计: {len(video_codes)})",
                            len(video_codes), len(video_codes))
-                
-                # Find pagination links
+
                 next_url = None
-                links = driver.find_elements(By.TAG_NAME, "a")
-                for link in links:
-                    href = link.get_attribute("href") or ""
-                    text = link.text.strip()
-                    
-                    # Pattern 1: /star/rp6/2, /star/rp6/3
-                    if star_name and f'/star/{star_name}/' in href:
-                        page_match = re.search(rf'/star/{re.escape(star_name)}/(\d+)', href)
-                        if page_match:
-                            page = int(page_match.group(1))
-                            if page == page_num + 1:
+                if star_name:
+                    escaped = re.escape(star_name)
+                    next_page = page_num + 1
+                    links = driver.find_elements(By.TAG_NAME, "a")
+                    for link in links:
+                        href = link.get_attribute("href") or ""
+                        text = link.text.strip()
+
+                        if f'/star/{star_name}/' in href:
+                            pm = re.search(rf'/star/{escaped}/(\d+)', href)
+                            if pm and int(pm.group(1)) == next_page:
                                 next_url = href
                                 break
-                    
-                    # Pattern 2: /star/rp6-2, /star/rp6-3
-                    if star_name and f'{star_name}-' in href:
-                        if f'star/{star_name}-{page_num + 1}' in href:
+
+                        if f'star/{star_name}-{next_page}' in href:
                             next_url = href
                             break
-                    
-                    # Pattern 3: next button
-                    if text in ('»', '>', '下一页', 'Next', '＞'):
-                        if f'star/{star_name}' in href:
-                            next_url = href
-                            break
-                
+
+                        if text in ('\u00bb', '>', '下一页', 'Next', '＞'):
+                            if f'star/{star_name}' in href:
+                                next_url = href
+                                break
+
                 if not next_url:
                     break
-                
-                # Navigate to next page
+
                 driver.get(next_url)
                 WebDriverWait(driver, 15).until(
-                    lambda d: len(re.findall(r'[A-Z]{2,6}-\d{3,5}', d.page_source)) > 0
+                    lambda d: len(VIDEO_CODE_RE.findall(d.page_source)) > 0
                 )
                 time.sleep(2)
                 page_num += 1
-        
+
         except Exception as e:
             if callback:
-                callback(f"Error: {str(e)[:50]}")
-        
-        # Deduplicate
+                callback(f"错误: {str(e)[:50]}")
+
         seen = set()
         unique = []
         for c in video_codes:
@@ -209,39 +195,24 @@ class JavbusCrawler:
                 unique.append(c)
         return unique
 
-    def get_star_page_videos(self, star_url, callback=None):
-        """Get all video codes from star page using Selenium (closes driver)"""
-        driver = self._get_driver()
-        try:
-            return self._get_star_page_videos(star_url, callback)
-        finally:
-            self.driver.quit()
-            self.driver = None
-
     def get_video_magnets(self, video_code, prefer_sub=False, callback=None):
-        """Get magnet links using Selenium"""
         if not self.driver:
             return video_code, '', None, None
-        
+
         url = f"{self.BASE_URL}/{video_code}"
-        
+
         try:
-            # Navigate to video page
             self.driver.get(url)
-            # Wait for page content to load
             WebDriverWait(self.driver, 15).until(
                 EC.presence_of_element_located(
                     (By.CSS_SELECTOR, 'h2.entry-title, #magnet-table, .container')
                 )
             )
-            # Wait for JS to load magnet links dynamically
             time.sleep(3)
 
-            # Get page source
             content = self.driver.page_source
-            
-            # Get title
             soup = BeautifulSoup(content, 'html.parser')
+
             title = ''
             title_el = soup.select_one('h2.entry-title')
             if title_el:
@@ -250,8 +221,7 @@ class JavbusCrawler:
                 title_el = soup.select_one('title')
                 if title_el:
                     title = title_el.get_text(strip=True).replace(' - JavBus', '')
-            
-            # Extract magnet links
+
             magnets = []
             magnet_table = soup.select_one('#magnet-table')
             if magnet_table:
@@ -265,8 +235,7 @@ class JavbusCrawler:
                                 name_text = link.get_text(strip=True)
                                 size = tds[1].get_text(strip=True) if len(tds) > 1 else ''
                                 date = tds[2].get_text(strip=True) if len(tds) > 2 else ''
-                                # Check for subtitle button within the same <td>
-                                has_sub = any('字幕' in a.get_text() for a in tds[0].select('a'))
+                                has_sub = any('\u5b57\u5e55' in a.get_text() for a in tds[0].select('a'))
                                 magnets.append({
                                     'magnet': magnet_href,
                                     'name': name_text,
@@ -274,38 +243,33 @@ class JavbusCrawler:
                                     'date': date,
                                     'has_sub': has_sub,
                                 })
-            
+
             if not magnets:
                 return video_code, title, None, None
-            
+
             if prefer_sub:
                 sub_magnets = [m for m in magnets if m['has_sub']]
                 if sub_magnets:
                     best = sub_magnets[0]
                     return video_code, title, best['magnet'], f"[字幕] {best['name']} | {best['size']}"
-            
+
             best = magnets[0]
             return video_code, title, best['magnet'], f"{best['name']} | {best['size']}"
-        
+
         except Exception as e:
             if callback:
-                callback(f"Error: {str(e)[:50]}")
+                callback(f"错误: {str(e)[:50]}")
             return video_code, '', None, None
 
     def stop(self):
         self._stop = True
-        if self.driver:
-            try:
-                self.driver.quit()
-            except:
-                pass
-            self.driver = None
+        self.cleanup()
 
     def cleanup(self):
         if self.driver:
             try:
                 self.driver.quit()
-            except:
+            except Exception:
                 pass
             self.driver = None
 
@@ -319,13 +283,13 @@ class CrawlerApp:
         self.crawling = False
         self._apply_theme()
         self._create_widgets()
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _apply_theme(self):
         style = ttk.Style()
         theme = style.theme_names()
-        if 'vista' in theme:
-            style.theme_use('vista')
-        elif 'clam' in theme:
+        use_clam = 'clam' in theme
+        if use_clam:
             style.theme_use('clam')
 
         bg = '#f0f2f5'
@@ -334,7 +298,6 @@ class CrawlerApp:
         hover = '#357abd'
         danger = '#e74c3c'
         danger_hover = '#c0392b'
-        success = '#27ae60'
         text = '#2c3e50'
         muted = '#7f8c8d'
 
@@ -347,19 +310,25 @@ class CrawlerApp:
         style.configure('Header.TFrame', background=bg)
         style.configure('Input.TEntry', fieldbackground='#f8f9fa', borderwidth=1, relief='solid')
         style.map('Input.TEntry', fieldbackground=[('focus', '#ffffff')])
-        style.configure('Primary.TButton', font=('Microsoft YaHei', 9, 'bold'), foreground='white', background=primary, padding=(18, 8))
-        style.map('Primary.TButton', background=[('active', hover)])
-        style.configure('Danger.TButton', font=('Microsoft YaHei', 9, 'bold'), foreground='white', background=danger, padding=(18, 8))
-        style.map('Danger.TButton', background=[('active', danger_hover)])
-        style.configure('Action.TButton', font=('Microsoft YaHei', 9), padding=(14, 8))
+
+        if use_clam:
+            style.configure('Primary.TButton', font=('Microsoft YaHei', 9, 'bold'), foreground='white', background=primary, padding=(18, 8), borderwidth=0)
+            style.map('Primary.TButton', background=[('active', hover)])
+            style.configure('Danger.TButton', font=('Microsoft YaHei', 9, 'bold'), foreground='white', background=danger, padding=(18, 8), borderwidth=0)
+            style.map('Danger.TButton', background=[('active', danger_hover)])
+            style.configure('Action.TButton', font=('Microsoft YaHei', 9), padding=(14, 8), borderwidth=0)
+            style.configure('TProgressbar', background=primary, troughcolor='#e0e0e0', thickness=6)
+            style.map('TProgressbar', background=[('active', hover)])
+        else:
+            style.configure('Primary.TButton', font=('Microsoft YaHei', 9, 'bold'), padding=(18, 8))
+            style.configure('Danger.TButton', font=('Microsoft YaHei', 9, 'bold'), padding=(18, 8))
+            style.configure('Action.TButton', font=('Microsoft YaHei', 9), padding=(14, 8))
+
         style.configure('Status.TLabel', font=('Microsoft YaHei', 9), foreground=text, background=card)
         style.configure('Count.TLabel', font=('Microsoft YaHei', 11, 'bold'), foreground=primary, background=card)
-        style.configure('Card.Progressbar', background=primary, depth=6)
-        style.map('Card.Progressbar', background=[('active', hover)])
-        style.configure('Treeview', font=('Microsoft YaHei', 9), background=card, fieldbackground=card, borderwidth=0)
-        style.configure('Treeview.Header', font=('Microsoft YaHei', 9, 'bold'), background='#ecf0f1', foreground=text)
 
-        self.colors = {'bg': bg, 'card': card, 'primary': primary, 'danger': danger, 'success': success, 'text': text, 'muted': muted, 'hover': hover, 'danger_hover': danger_hover}
+        self.colors = {'bg': bg, 'card': card, 'primary': primary, 'danger': danger, 'text': text, 'muted': muted, 'hover': hover, 'danger_hover': danger_hover}
+        self.use_clam = use_clam
 
     def _create_rounded_frame(self, parent, text="", padding=15):
         f = ttk.LabelFrame(parent, text=text, style='Card.TLabelframe', padding=padding)
@@ -368,17 +337,14 @@ class CrawlerApp:
     def _create_widgets(self):
         c = self.colors
 
-        # Header
         header = ttk.Frame(self.root, style='Header.TFrame', padding=(20, 12))
         header.pack(fill="x")
         ttk.Label(header, text="🔍 JavBus 磁力链接爬虫", style='Title.TLabel').pack(side="left")
         ttk.Label(header, text="基于 Selenium 的自动化爬虫工具", style='Subtitle.TLabel').pack(side="left", padx=(12, 0))
 
-        # Main content
         main = ttk.Frame(self.root, style='Header.TFrame')
         main.pack(fill="both", expand=True, padx=16, pady=8)
 
-        # Settings card
         card = self._create_rounded_frame(main, text="⚙️  爬取设置")
         card.pack(fill="x", pady=(0, 8))
 
@@ -404,7 +370,6 @@ class CrawlerApp:
         self.prefer_sub = tk.BooleanVar(value=True)
         ttk.Checkbutton(row2, text="优先选择带字幕资源", variable=self.prefer_sub, style='TCheckbutton').pack(side="left")
 
-        # Buttons + Status card
         mid = self._create_rounded_frame(main, text="📊  运行状态")
         mid.pack(fill="x", pady=(8, 8))
 
@@ -424,10 +389,9 @@ class CrawlerApp:
         self.count_var = tk.StringVar(value="0 条结果")
         ttk.Label(stat_row, textvariable=self.count_var, style='Count.TLabel').pack(side="right")
 
-        self.progress = ttk.Progressbar(mid, mode='determinate', style='Card.Progressbar')
+        self.progress = ttk.Progressbar(mid, mode='determinate')
         self.progress.pack(fill="x", pady=(8, 0))
 
-        # Results area
         paned = ttk.PanedWindow(main, orient="horizontal")
         paned.pack(fill="both", expand=True)
 
@@ -544,9 +508,43 @@ class CrawlerApp:
         return 'break'
 
     def log_msg(self, msg):
+        self.root.after(0, self._log_msg_now, msg)
+
+    def _log_msg_now(self, msg):
         self.log.insert("end", f"{msg}\n")
         self.log.see("end")
-        self.root.update_idletasks()
+
+    def _update_status(self, msg):
+        self.root.after(0, self.status_var.set, msg)
+
+    def _update_progress(self, value, maximum=None):
+        def _do():
+            self.progress['value'] = value
+            if maximum is not None:
+                self.progress['maximum'] = maximum
+        self.root.after(0, _do)
+
+    def _update_count(self, msg):
+        self.root.after(0, self.count_var.set, msg)
+
+    def _update_results(self, text):
+        self.root.after(0, self._update_results_now, text)
+
+    def _update_results_now(self, text):
+        self.res.insert("end", text)
+        self.res.see("end")
+
+    def _set_final_state(self):
+        def _do():
+            self.crawling = False
+            self.start_btn.config(state="normal")
+            self.stop_btn.config(state="disabled")
+        self.root.after(0, _do)
+
+    def _on_close(self):
+        self.crawling = False
+        self.crawler.stop()
+        self.root.destroy()
 
     def start(self):
         if self.crawling:
@@ -562,6 +560,7 @@ class CrawlerApp:
         self.start_btn.config(state="disabled")
         self.stop_btn.config(state="normal")
         self.res.delete("1.0", "end")
+        self.log.delete("1.0", "end")
 
         threading.Thread(target=self._run, args=(url,), daemon=True).start()
 
@@ -575,28 +574,31 @@ class CrawlerApp:
     def _run(self, url):
         try:
             self.log_msg(f"正在请求: {url}")
-            self.status_var.set("正在启动浏览器...")
+            self._update_status("正在启动浏览器...")
 
             if not SELENIUM_AVAILABLE:
                 self.log_msg("未安装 Selenium！")
+                self._set_final_state()
                 return
 
             self.crawler._get_driver()
 
-            self.status_var.set("正在获取视频列表...")
+            self._update_status("正在获取视频列表...")
             videos = self.crawler._get_star_page_videos(url,
-                callback=lambda msg, cur=0, tot=0: (self.log_msg(msg), self.status_var.set(msg)))
+                callback=lambda msg, cur=0, tot=0: (self.log_msg(msg), self._update_status(msg)))
 
             if not videos:
                 self.log_msg("未找到任何视频！")
+                self._set_final_state()
                 return
 
             mx = self.max_var.get()
             if mx.isdigit() and int(mx) > 0:
                 videos = videos[:int(mx)]
 
-            self.log_msg(f"共找到 {len(videos)} 个视频")
-            self.progress['maximum'] = len(videos)
+            total = len(videos)
+            self.log_msg(f"共找到 {total} 个视频")
+            self._update_progress(0, maximum=total)
 
             success = 0
             prefer_sub = self.prefer_sub.get()
@@ -605,15 +607,19 @@ class CrawlerApp:
                 if not self.crawling:
                     break
 
-                self.status_var.set(f"[{i+1}/{len(videos)}] {code}")
-                self.progress['value'] = i + 1
-                self.count_var.set(f"{i} 条结果")
+                self._update_status(f"[{i+1}/{total}] {code}")
+                self._update_progress(i + 1)
+                self._update_count(f"{i} 条结果")
                 self.log_msg(f"正在爬取: {code}")
 
+                def make_callback():
+                    def cb(m):
+                        self.log_msg(m)
+                    return cb
+
                 vcode, title, magnet, info = self.crawler.get_video_magnets(
-                    code, prefer_sub=prefer_sub,
-                    callback=lambda m: self.log_msg(m))
-                
+                    code, prefer_sub=prefer_sub, callback=make_callback())
+
                 self.crawler.results.append({
                     'code': vcode,
                     'title': title,
@@ -624,16 +630,15 @@ class CrawlerApp:
                 if magnet:
                     success += 1
                     self.log_msg(f"  ✓ 成功: {info}")
-                    self.res.insert("end", f"{vcode} | {title} | {info}\n{magnet}\n\n")
-                    self.res.see("end")
+                    self._update_results(f"{vcode} | {title} | {info}\n{magnet}\n\n")
                 else:
                     self.log_msg(f"  ✗ 未找到磁力链接")
 
                 time.sleep(2)
 
-            self.log_msg(f"爬取完成！共 {success}/{len(videos)} 个视频含有磁力链接")
-            self.status_var.set(f"完成: {success}/{len(videos)}")
-            self.count_var.set(f"{len(self.crawler.results)} 条结果")
+            self.log_msg(f"爬取完成！共 {success}/{total} 个视频含有磁力链接")
+            self._update_status(f"完成: {success}/{total}")
+            self._update_count(f"{len(self.crawler.results)} 条结果")
 
         except Exception as e:
             self.log_msg(f"发生错误: {e}")
@@ -641,9 +646,7 @@ class CrawlerApp:
             self.log_msg(traceback.format_exc())
         finally:
             self.crawler.cleanup()
-            self.crawling = False
-            self.start_btn.config(state="normal")
-            self.stop_btn.config(state="disabled")
+            self._set_final_state()
 
     def export(self):
         if not self.crawler.results:
