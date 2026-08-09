@@ -1,5 +1,6 @@
-requests
+customtkinter
+httpx
 beautifulsoup4
 lxml
-selenium
+pillow
 pyinstaller

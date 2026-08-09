@@ -1,17 +1,25 @@
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_all
 
+datas, binaries, hiddenimports = collect_all('customtkinter')
+
+hiddenimports += [
+    'selenium',
+    'selenium.webdriver.edge.webdriver',
+    'selenium.webdriver.chrome.webdriver',
+    'selenium.webdriver.edge.service',
+    'selenium.webdriver.chrome.service',
+    'bs4',
+    'lxml',
+    'PIL',
+]
 
 a = Analysis(
     ['javbus_crawler.py'],
     pathex=[],
-    binaries=[],
-    datas=[],
-    hiddenimports=[
-        'selenium.webdriver.edge.webdriver',
-        'selenium.webdriver.chrome.webdriver',
-        'selenium.webdriver.edge.service',
-        'selenium.webdriver.chrome.service',
-    ],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
