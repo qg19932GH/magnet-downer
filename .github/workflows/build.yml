@@ -41,4 +41,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
+          name: JavBus 磁力链接极速抓取器 构建 ${{ github.run_number }}
+          body: |
+            自动构建产物（PyInstaller）
+            版本: v2.6
+            包含修复: selenium 依赖、线程安全、正则优化等
           files: dist/JavBusCrawler.exe
