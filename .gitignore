@@ -8,3 +8,5 @@ dist/
 eggs/
 .opencode/
 opencode.json
+*.exe
+新建文件夹/
