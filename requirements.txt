@@ -1,6 +1,6 @@
 customtkinter
 httpx
 beautifulsoup4
-lxml
-pillow
+pillow>=9.1
+selenium>=4.6
 pyinstaller

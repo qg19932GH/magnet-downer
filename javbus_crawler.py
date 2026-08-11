@@ -26,7 +26,7 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
-VIDEO_CODE_RE = re.compile(r'[A-Z]{2,6}-\d{3,5}', re.IGNORECASE)
+VIDEO_CODE_RE = re.compile(r'(?<![A-Za-z0-9])[A-Z]{2,6}-\d{3,5}(?![A-Za-z0-9])', re.IGNORECASE)
 STAR_URL_RE = re.compile(r'/star/([^/?#]+)')
 INVALID_CODES = {'HTTP', 'HTML', 'HTTPS', 'JAVBUS', 'SEARCH'}
 
@@ -319,6 +319,7 @@ class ModernCrawlerApp(ctk.CTk):
         self.crawler = JavbusSeleniumCrawler()
         self.crawling = False
         self.image_cache = {}
+        self._run_id = 0
 
         self._create_layout()
 
@@ -786,6 +787,8 @@ class ModernCrawlerApp(ctk.CTk):
 
         self.crawling = True
         self.crawler._stop = False
+        self._run_id += 1
+        my_run_id = self._run_id
         self.crawler.results.clear()
         self._clear_tree()
 
@@ -793,7 +796,7 @@ class ModernCrawlerApp(ctk.CTk):
         self.btn_stop.configure(state="normal")
         self.progress_bar.set(0)
 
-        threading.Thread(target=self._run_crawl_thread, args=(url, proxy), daemon=True).start()
+        threading.Thread(target=self._run_crawl_thread, args=(url, proxy, my_run_id), daemon=True).start()
 
     def stop_crawl(self):
         self.crawling = False
@@ -803,7 +806,7 @@ class ModernCrawlerApp(ctk.CTk):
         self.update_status("正在停止...")
         self.log("⏹ 用户手动停止任务")
 
-    def _run_crawl_thread(self, url, proxy):
+    def _run_crawl_thread(self, url, proxy, run_id):
         try:
             self.log(f"🚀 开始任务: {url}")
             if proxy:
@@ -841,6 +844,7 @@ class ModernCrawlerApp(ctk.CTk):
 
             completed = 0
             success_count = 0
+            stats_lock = threading.Lock()
 
             # Worker task (reuses driver for entire chunk with human-like pacing delay)
             def worker_task(code_chunk):
@@ -849,7 +853,7 @@ class ModernCrawlerApp(ctk.CTk):
                 try:
                     driver = self.crawler.create_driver(proxy=proxy)
                     for code in code_chunk:
-                        if not self.crawling:
+                        if not self.crawling or run_id != self._run_id:
                             break
 
                         self.log(f"🔍 正在解析番号: {code}")
@@ -857,22 +861,24 @@ class ModernCrawlerApp(ctk.CTk):
                             driver, code, prefer_sub=prefer_sub, callback=self.log
                         )
 
-                        completed += 1
+                        with stats_lock:
+                            completed += 1
+                            if magnet:
+                                success_count += 1
+                            self.crawler.results.append({
+                                'code': vcode,
+                                'title': title,
+                                'magnet': magnet or '',
+                                'info': info or '',
+                                'cover_url': cover_url or ''
+                            })
+
                         self.update_progress(completed, total)
                         self.update_status(f"进度: {completed}/{total} [{vcode}]")
-
-                        self.crawler.results.append({
-                            'code': vcode,
-                            'title': title,
-                            'magnet': magnet or '',
-                            'info': info or '',
-                            'cover_url': cover_url or ''
-                        })
 
                         self.add_result(vcode, title, magnet, info, cover_url, proxy=proxy)
 
                         if magnet:
-                            success_count += 1
                             self.log(f"  ✓ [{vcode}] 抓取成功: {info}")
                         else:
                             self.log(f"  ✗ [{vcode}] 无可用磁链 (无资源或合集碟)")
