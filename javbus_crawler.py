@@ -634,6 +634,25 @@ class ModernCrawlerApp(ctk.CTk):
 
         textbox_widget.bind("<Button-3>", show_menu)
 
+    def _bind_card_wheel(self, textbox_widget):
+        text_widget = getattr(textbox_widget, "_textbox", None)
+        if text_widget is None:
+            return
+
+        def _scroll(event):
+            canvas = self.card_scroll_frame._parent_canvas
+            if event.num == 4:
+                canvas.yview_scroll(-1, "units")
+            elif event.num == 5:
+                canvas.yview_scroll(1, "units")
+            else:
+                canvas.yview_scroll(-int(event.delta / 6), "units")
+            return "break"
+
+        text_widget.bind("<MouseWheel>", _scroll)
+        text_widget.bind("<Button-4>", _scroll)
+        text_widget.bind("<Button-5>", _scroll)
+
     def add_result(self, code, title, magnet, info, cover_url, proxy=None):
         def _do():
             # Add to treeview table
@@ -679,6 +698,7 @@ class ModernCrawlerApp(ctk.CTk):
             txt_title.insert("1.0", title_text)
             txt_title.grid(row=0, column=1, padx=(0, 12), pady=(10, 2), sticky="ew")
             self._bind_selectable_text_menu(txt_title, fallback_full_text=title_text)
+            self._bind_card_wheel(txt_title)
 
             # Info Badge (Selectable Text Box for Info)
             info_str = info if info else "暂无可用磁力链接 (或合集碟)"
@@ -695,6 +715,7 @@ class ModernCrawlerApp(ctk.CTk):
             txt_info.insert("1.0", info_str)
             txt_info.grid(row=1, column=1, padx=(0, 12), pady=(0, 4), sticky="ew")
             self._bind_selectable_text_menu(txt_info, fallback_full_text=info_str)
+            self._bind_card_wheel(txt_info)
 
             # Buttons row
             btn_frame = ctk.CTkFrame(card, fg_color="transparent")
